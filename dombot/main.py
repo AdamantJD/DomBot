@@ -99,7 +99,7 @@ while True:
             continue
 
         # Get OHLCV data
-        data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1], verbose=False)
+        data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
         high = np.array([item[2] for item in data])
         low = np.array([item[3] for item in data])
         ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
