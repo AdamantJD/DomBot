@@ -8,9 +8,9 @@ To get started with DomBot, follow the steps below:
 
 ### Frontend Setup
 
-1. Clone the project repository: `git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git`
+1. Clone the project repository: `git clone https://github.com/AdamantJD/DomBot.git`
 
-2. Navigate to the project directory: `cd YOUR_REPO`
+2. Navigate to the project directory: `cd dombot`
 
 3. Install the necessary dependencies: `npm install`
 
