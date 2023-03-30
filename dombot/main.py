@@ -28,7 +28,6 @@ exchange = ccxt.binance({
 
 exchange.load_markets()
 markets = exchange.markets.keys()
-print(markets)
 
 # Set up trading parameters
 risk = 0.1
@@ -102,10 +101,12 @@ def get_futures_balance():
     for i in range(5):
         try:
             balance = exchange.fapiPrivate_get_balance()
-            print(balance)
+            other_logger.debug(f"Raw futures balance response: {balance}")
             for entry in balance:
                 if entry['asset'] == 'USDT':
-                    return float(entry['balance'])
+                    usdt_balance = float(entry['balance'])
+                    print(f"USDT balance: {usdt_balance}")
+                    return usdt_balance
         except ccxt.NetworkError as e:
             other_logger.error(f"Error fetching futures balance: {e}")
             time.sleep(5 * (i + 1))
@@ -127,6 +128,7 @@ def enter_trade(symbol, position_size, direction, current_price):
                 order = exchange.create_market_buy_order(symbol, position_size)
             elif direction == 'short':
                 order = exchange.create_market_sell_order(symbol, position_size)
+            other_logger.debug(f"Market order response for {symbol}: {order}")
             logging.info(f"Placed {direction} order for {symbol} with position size {position_size} and current price {current_price}")
             return order
         except Exception as e:
@@ -142,6 +144,7 @@ def exit_trade(symbol, position_size, direction):
                 order = exchange.create_market_sell_order(symbol, position_size)
             elif direction == 'short':
                 order = exchange.create_market_buy_order(symbol, position_size)
+            other_logger.debug(f"Exit order response for {symbol}: {order}")
             
             # Log trade exit
             if order:
@@ -180,17 +183,16 @@ def process_symbol(symbol):
             signal = True
 
         if signal:
+            other_logger.debug(f"{symbol} signal: {signal}")
             logging.info(f"Attempting to execute trade for {symbol}")  # Log the trading pair
 
             # Get current futures balance
             balance = None
-            for attempt in range(3):
-                try:
-                    balance = get_futures_balance()
-                    if balance is not None:
-                        break
-                except Exception as e:
-                    other_logger.error(f"Error fetching futures balance: {e}")
+            for attempt in range(3):    
+                balance = get_futures_balance()
+                if balance is not None:
+                    break
+                else:
                     time.sleep(5 * (attempt + 1))
 
             if balance is None:

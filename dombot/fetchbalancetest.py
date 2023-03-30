@@ -16,6 +16,9 @@ exchange = ccxt.binance({
 
 # Fetch futures balance
 balance = exchange.fapiPrivate_get_balance()
-
+for entry in balance:
+    if entry['asset'] == 'USDT':
+        usdt_balance = float(entry['balance'])
+        print(f"USDT balance: {usdt_balance}")
+        break
 # Print the balance
-print(balance)
