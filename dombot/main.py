@@ -7,8 +7,6 @@ import requests
 import logging
 from dotenv import load_dotenv
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-
 # Load API keys from .env file
 load_dotenv()
 API_KEY = os.getenv('API_KEY')
@@ -39,20 +37,31 @@ bollinger_period = 20
 # Set up logging for market data
 market_data_logger = logging.getLogger('market_data_logger')
 market_data_logger.setLevel(logging.DEBUG)
-market_data_handler = logging.FileHandler('market_data.log')
-market_data_handler.setLevel(logging.DEBUG)
+market_data_logger.propagate = False  # Prevent propagation of market_data_logger messages
+
+# Add a file handler to write logs to the market_data.log file
+file_handler = logging.FileHandler('market_data.log')
+file_handler.setLevel(logging.DEBUG)
 market_data_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
-market_data_handler.setFormatter(market_data_formatter)
-market_data_logger.addHandler(market_data_handler)
+file_handler.setFormatter(market_data_formatter)
+market_data_logger.addHandler(file_handler)
 
 # Set up logging for all other events
 other_logger = logging.getLogger('other_logger')
 other_logger.setLevel(logging.DEBUG)
-other_handler = logging.FileHandler('other.log')
-other_handler.setLevel(logging.DEBUG)
+
+# Set up a StreamHandler to output other logs to the console
+other_handler = logging.StreamHandler()
+other_handler.setLevel(logging.INFO)  # Only log messages with INFO level or higher to the console
 other_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
 other_handler.setFormatter(other_formatter)
 other_logger.addHandler(other_handler)
+
+# Add a file handler to write logs to the other.log file
+file_handler = logging.FileHandler('other.log')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(other_formatter)
+other_logger.addHandler(file_handler)
 
 def get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period):
     close_prices = np.array([item[4] for item in data])
@@ -143,6 +152,10 @@ while True:
 
         # Get OHLCV data
         data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
+
+        # Log market data
+        market_data_logger.debug(f"{symbol} OHLCV data: {data}")
+
         high = np.array([item[2] for item in data])
         low = np.array([item[3] for item in data])
         ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
