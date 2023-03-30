@@ -7,6 +7,8 @@ import requests
 import logging
 from dotenv import load_dotenv
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+
 # Load API keys from .env file
 load_dotenv()
 API_KEY = os.getenv('API_KEY')
@@ -34,17 +36,49 @@ rsi_period = 14
 stoch_periods = (14, 3, 3)
 bollinger_period = 20
 
-# Set up logging
-logging.basicConfig(filename='trading_bot.log', level=logging.DEBUG,
-                    format='%(asctime)s %(levelname)s %(message)s')
+# Set up logging for market data
+market_data_logger = logging.getLogger('market_data_logger')
+market_data_logger.setLevel(logging.DEBUG)
+market_data_handler = logging.FileHandler('market_data.log')
+market_data_handler.setLevel(logging.DEBUG)
+market_data_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+market_data_handler.setFormatter(market_data_formatter)
+market_data_logger.addHandler(market_data_handler)
+
+# Set up logging for all other events
+other_logger = logging.getLogger('other_logger')
+other_logger.setLevel(logging.DEBUG)
+other_handler = logging.FileHandler('other.log')
+other_handler.setLevel(logging.DEBUG)
+other_formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+other_handler.setFormatter(other_formatter)
+other_logger.addHandler(other_handler)
 
 def get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period):
     close_prices = np.array([item[4] for item in data])
-    ema_values = {period: talib.EMA(close_prices, timeperiod=period) for period in ema_periods}
-    rsi_values = talib.RSI(close_prices, timeperiod=rsi_period)
-    stoch_values = talib.STOCH(high, low, close_prices, stoch_periods[0], stoch_periods[1], stoch_periods[2])
-    bollinger_values = talib.BBANDS(close_prices, timeperiod=bollinger_period)
+    ema_values = {period: np.full_like(close_prices, np.nan) for period in ema_periods}
+    rsi_values = np.full_like(close_prices, np.nan)
+    stoch_values = np.full((len(close_prices), 2), np.nan)
+    bollinger_values = np.full((len(close_prices), 3), np.nan)
+    
+    for period in ema_periods:
+        if len(close_prices) >= period:
+            ema_values[period] = talib.EMA(close_prices, timeperiod=period)
+    
+    if len(close_prices) >= rsi_period:
+        rsi_values = talib.RSI(close_prices, timeperiod=rsi_period)
+    
+    if len(close_prices) >= stoch_periods[0]:
+        stoch_values = talib.STOCH(high, low, close_prices, *stoch_periods)
+    
+    if len(close_prices) >= bollinger_period:
+        upper, middle, lower = talib.BBANDS(close_prices, timeperiod=bollinger_period)
+        bollinger_values[:, 0] = upper
+        bollinger_values[:, 1] = middle
+        bollinger_values[:, 2] = lower
+    
     return ema_values, rsi_values, stoch_values, bollinger_values
+
 
 def get_futures_balance():
     for i in range(5):
@@ -56,8 +90,8 @@ def get_futures_balance():
         except Exception as e:
             logging.error(f"Error fetching futures balance: {e}")
             time.sleep(5 * (i + 1))
-    logging.error("Failed to fetch futures balance after multiple attempts.")
-    return None
+    raise RuntimeError("Failed to fetch futures balance after multiple attempts.")
+
 
 def enter_trade(symbol, position_size, direction, current_price):
     for i in range(5):
@@ -69,14 +103,14 @@ def enter_trade(symbol, position_size, direction, current_price):
                 order = exchange.create_market_buy_order(symbol, position_size)
             elif direction == 'short':
                 order = exchange.create_market_sell_order(symbol, position_size)
+            logging.info(f"Placed {direction} order for {symbol} with position size {position_size} and current price {current_price}")
             return order
         except Exception as e:
             logging.error(f"Error entering {direction} trade for {symbol}: {e}")
             time.sleep(5 * (i + 1))
     logging.error(f"Failed to enter {direction} trade for {symbol} after multiple attempts.")
     return None
-
-
+    
 def exit_trade(symbol, position_size, direction):
     for i in range(5):
         try:
@@ -84,14 +118,23 @@ def exit_trade(symbol, position_size, direction):
                 order = exchange.create_market_sell_order(symbol, position_size)
             elif direction == 'short':
                 order = exchange.create_market_buy_order(symbol, position_size)
+            
+            # Log trade exit
+            if order:
+                logging.info(f"Exited {direction} trade for {symbol} with position size {position_size}")
+            
             return order
         except Exception as e:
-            logging.error(f"Error exiting trade for {symbol}: {e}")
+            logging.error(f"Error exiting {direction} trade for {symbol}: {e}")
             time.sleep(5 * (i + 1))
+    
     logging.error(f"Failed to exit {direction} trade for {symbol} after multiple attempts.")
     return None
 
+
+
 # Main trading loop
+last_trade_time = time.time() - 60 # initialize last trade time
 while True:
     for symbol in exchange.markets:
         # Only trade USDT pairs
@@ -123,9 +166,13 @@ while True:
                 if balance is None:
                     logging.warning("Skipping trade due to failure to obtain balance.")
                     continue
-
+                
                 # Calculate position size
-                position_size = 0.01 * balance
+                symbol_info = exchange.markets[symbol]
+                minimum_trade_value = symbol_info['limits']['cost']['min']
+                minimum_position_size = minimum_trade_value / current_price
+                position_size = max(minimum_position_size, 0.01 * balance)
+                position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
 
                 # Get current price
                 ticker = exchange.fetch_ticker(symbol)
@@ -138,9 +185,10 @@ while True:
 
                     # Monitor trade
                     in_trade = True
+                    entry_time = time.time()
                     entry_price = current_price
                     while in_trade:
-                        time.sleep(60)
+                        time.sleep(5)
                         ticker = exchange.fetch_ticker(symbol)
                         current_price = ticker['ask'] if direction == 'long' else ticker['bid']
 
@@ -158,7 +206,18 @@ while True:
                             if exit_order:
                                 logging.info(f"Exited {direction} trade for {symbol} with loss")
                             in_trade = False
+                        elif time.time() - entry_time > 900: # trade duration is 15 minutes (900 seconds)
+                            exit_order = exit_trade(symbol, position_size, direction)
+                            if exit_order:
+                                logging.info(f"Excited {direction} trade for {symbol} after 15 minutes")
+                            in_trade = False
+                    # Update last trade time
+                    last_trade_time = time.time()
 
-    # Sleep before starting the next loop
-    time.sleep(60)
-   
+        # Calculate remainign time before next trade
+        next_trade_time = last_trade_time + 60
+        remaining_time = max(0, next_trade_time - time.time())
+
+        # Sleep before starting the next loop
+        time.sleep(60)
+    
