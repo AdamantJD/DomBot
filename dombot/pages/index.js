@@ -1,22 +1,43 @@
-import { useState } from 'react'
+import Head from 'next/head'
+import { useState, useEffect } from 'react'
 
 export default function Home() {
-  const [buying, setBuying] = useState(false)
-  const handleBuy = async () => {
-    setBuying(true)
-    try {
-      const res = await fetch('/api/buy', { method: 'POST' })
-      if (res.ok) {
-        console.log('Buy order placed successfully')
-      } else {
-        console.log('Error placing buy order')
-      }
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setBuying(false)
-    }
-  }
+  const [walletBalance, setWalletBalance] = useState(null)
+  const [pendingOrders, setPendingOrders] = useState([])
+  const [executedOrders, setExecutedOrders] = useState([])
+  const [pnl, setPnL] = useState(null)
+  const [pnlPercent, setPnLPercent] = useState(null)
+  const [winRate, setWinRate] = useState(null)
+
+  useEffect(() => {
+    // Fetch wallet balance from backend API
+    fetch('/api/walletBalance')
+      .then(res => res.json())
+      .then(data => setWalletBalance(data.balance))
+      .catch(error => console.error(error))
+
+    // Fetch pending orders from backend API
+    fetch('/api/pendingOrders')
+      .then(res => res.json())
+      .then(data => setPendingOrders(data.orders))
+      .catch(error => console.error(error))
+
+    // Fetch executed orders from backend API
+    fetch('/api/executedOrders')
+      .then(res => res.json())
+      .then(data => setExecutedOrders(data.orders))
+      .catch(error => console.error(error))
+
+    // Fetch PnL, PnL%, and win rate from backend API
+    fetch('/api/performanceMetrics')
+      .then(res => res.json())
+      .then(data => {
+        setPnL(data.pnl)
+        setPnLPercent(data.pnlPercent)
+        setWinRate(data.winRate)
+      })
+      .catch(error => console.error(error))
+  }, [])
 
   return (
     <div className="container">
@@ -30,13 +51,45 @@ export default function Home() {
           Trading Bot Dashboard
         </h1>
 
-        <p className="description">
-          Welcome to your trading bot dashboard!
-        </p>
+        <div className="dashboard">
+          <div className="section">
+            <h2>Wallet Balance</h2>
+            <p>{walletBalance != null ? walletBalance.toFixed(2) : '-'}</p>
+          </div>
 
-        <button disabled={buying} onClick={handleBuy}>Place Buy Order</button>
+          <div className="section">
+            <h2>Pending Orders</h2>
+            <ul>
+              {pendingOrders.map(order => (
+                <li key={order.id}>
+                  {order.type === 'buy' ? 'Buy' : 'Sell'} {order.amount} {order.symbol} at {order.price.toFixed(2)}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="section">
+            <h2>Executed Orders</h2>
+            <ul>
+              {executedOrders.map(order => (
+                <li key={order.id}>
+                  {order.type === 'buy' ? 'Bought' : 'Sold'} {order.amount} {order.symbol} at {order.price.toFixed(2)}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="section">
+            <h2>PnL</h2>
+            <p>{pnl != null ? pnl.toFixed(2) : '-'} ({pnlPercent != null ? pnlPercent.toFixed(2) : '-'}%)</p>
+          </div>
+
+          <div className="section">
+            <h2>Win Rate</h2>
+            <p>{winRate != null ? winRate.toFixed(2) : '-'}%</p>
+          </div>
+        </div>
       </main>
-
       <footer>
         <p>Powered by your trading bot</p>
       </footer>
@@ -58,6 +111,30 @@ export default function Home() {
           flex-direction: column;
           justify-content: center;
           align-items: center;
+        }
+
+        .dashboard {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .section {
+          margin: 2rem;
+          padding: 2rem;
+          border: 1px solid #eaeaea;
+          border-radius: 10px;
+          text-align: center;
+        }
+
+        ul {
+          list-style: none;
+          padding-left: 0;
+        }
+
+        li {
+          margin-bottom: 0.5rem;
         }
 
         footer {
@@ -124,3 +201,4 @@ export default function Home() {
     </div>
   )
 }
+
