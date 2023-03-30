@@ -12,9 +12,17 @@ export default function Home() {
   useEffect(() => {
     // Fetch wallet balance from backend API
     fetch('/api/walletBalance')
-      .then(res => res.json())
-      .then(data => setWalletBalance(data.balance))
-      .catch(error => console.error(error))
+    .then(res => res.json())
+    .then(data => {
+      console.log('Data from API:', data); // Check the entire data object
+      const usdtBalance = data.balance; // Update this line to use the correct data format
+      console.log('USDT Balance:', usdtBalance); // Check the USDT balance
+      setWalletBalance(usdtBalance || null);
+    })
+    
+
+
+    .catch(error => console.error(error))
 
     // Fetch pending orders from backend API
     fetch('/api/pendingOrders')
@@ -39,6 +47,10 @@ export default function Home() {
       .catch(error => console.error(error))
   }, [])
 
+  useEffect(() => {
+    console.log(walletBalance, "3");
+  }, [walletBalance]);
+
   return (
     <div className="container">
       <Head>
@@ -52,11 +64,19 @@ export default function Home() {
         </h1>
 
         <div className="dashboard">
-          <div className="section">
-            <h2>Wallet Balance</h2>
-            <p>{walletBalance != null ? `${walletBalance.toFixed(2)}` : '-'}</p>
-          </div>
+        <div className="section">
+          <h2>Wallet Balance</h2>
+<p>
+  {
+    (() => {
+      console.log(walletBalance, "4");
+      return walletBalance != null ? `$${Number(walletBalance).toFixed(2)}` : '-';
+    })()
+  }
+</p>
 
+
+        </div>
           <div className="section">
             <h2>Pending Orders</h2>
             <ul>
