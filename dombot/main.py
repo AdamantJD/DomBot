@@ -36,7 +36,8 @@ lookback_periods = [100, 200]
 take_profit = 0.441
 stop_loss = 1
 max_position_size = 0.05
-ema_periods = [10, 20]
+# ema_periods = [10, 20]
+ema_periods = [5, 10]
 rsi_period = 14
 stoch_periods = (14, 3, 3)
 bollinger_period = 20
@@ -116,6 +117,12 @@ def get_futures_balance():
     logging.warning("Failed to fetch futures balance after multiple attempts.")
     return None
 
+def get_futures_symbols():
+    futures_symbols = []
+    exchange_info = exchange.fapiPublic_get_exchangeinfo()
+    for symbol_info in exchange_info['symbols']:
+        futures_symbols.append(symbol_info['symbol'])
+    return futures_symbols
 
 
 def enter_trade(symbol, position_size, direction, current_price):
@@ -158,6 +165,10 @@ def exit_trade(symbol, position_size, direction):
     logging.error(f"Failed to exit {direction} trade for {symbol} after multiple attempts.")
     return None
 
+def calculate_position_size(balance, current_price, risk):
+    position_size = balance * risk / current_price
+    return min(position_size, max_position_size * balance)
+
 def process_symbol(symbol):
     # Get OHLCV data
     data = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=lookback_periods[1])
@@ -177,9 +188,9 @@ def process_symbol(symbol):
 
     if direction:
         signal = False  # Initialize signal variable
-        if rsi_values[-1] < 30 and direction == 'long':
+        if rsi_values[-1] < 45 and direction == 'long':
             signal = True
-        elif rsi_values[-1] > 70 and direction == 'short':
+        elif rsi_values[-1] > 55 and direction == 'short':
             signal = True
 
         if signal:
@@ -208,6 +219,7 @@ def process_symbol(symbol):
             minimum_trade_value = symbol_info['limits']['cost']['min']
             minimum_position_size = minimum_trade_value / current_price
             position_size = max(minimum_position_size, 0.01 * balance)
+            position_size = calculate_position_size(balance, current_price, risk)
             position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
 
             # Enter trade
@@ -250,7 +262,11 @@ import concurrent.futures
 
 def process_symbols():
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        symbols_to_process = [symbol for symbol in exchange.markets if symbol.endswith('/USDT')]
+        # Get valid futures trading pairs
+        valid_futures_symbols = get_futures_symbols()
+
+        # Filter out invalid trading pairs from your list of USDT pairs
+        symbols_to_process = [symbol for symbol in exchange.markets if symbol.endswith('/USDT') and symbol.replace("/", "") in valid_futures_symbols]
         executor.map(process_symbol, symbols_to_process)
 
 last_trade_time = time.time() - 60  # Initialize last trade time
