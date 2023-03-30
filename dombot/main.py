@@ -181,9 +181,9 @@ def process_symbol(symbol):
     ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
 
     direction = None
-    if ema_values[10][-1] > ema_values[20][-1] and ema_values[10][-2] <= ema_values[20][-2]:
+    if ema_values[5][-1] > ema_values[10][-1] and ema_values[5][-2] <= ema_values[10][-2]:
         direction = 'long'
-    elif ema_values[10][-1] < ema_values[20][-1] and ema_values[10][-2] >= ema_values[20][-2]:
+    elif ema_values[5][-1] < ema_values[10][-1] and ema_values[5][-2] >= ema_values[10][-2]:
         direction = 'short'
 
     if direction:
