@@ -17,6 +17,8 @@ exchange = ccxt.binance({
     'enableRateLimit': True,
 })
 
+exchange.load_markets()
+
 # Set up trading parameters
 risk = 0.1
 leverage = 10
@@ -62,6 +64,9 @@ def exit_trade(symbol, position_size, direction):
 # Main trading loop
 while True:
     for symbol in exchange.markets:
+        # Only trade USDT pairs
+        if not symbol.endswith('/USDT'):
+            continue
         # Get OHLCV data
         data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
         high = np.array([item[2] for item in data])
@@ -82,40 +87,40 @@ while True:
                 signal = True
             
             if signal:
-            # Calculate position size
+                # Calculate position size
                 position_size = max_position_size * risk / stop_loss
 
-            # Get current price
-            ticker = exchange.fetch_ticker(symbol)
-            current_price = ticker['ask'] if direction == 'long' else ticker['bid']
+                # Get current price
+                ticker = exchange.fetch_ticker(symbol)
+                current_price = ticker['ask'] if direction == 'long' else ticker['bid']
 
-            # Enter trade
-            order = enter_trade(symbol, position_size, direction, current_price)
-            if order:
-                print(f"Entered {direction} trade for {symbol} with position size {position_size}")
+                # Enter trade
+                order = enter_trade(symbol, position_size, direction, current_price)
+                if order:
+                    print(f"Entered {direction} trade for {symbol} with position size {position_size}")
 
-                # Monitor trade
-                in_trade = True
-                entry_price = current_price
-                while in_trade:
-                    time.sleep(60)
-                    ticker = exchange.fetch_ticker(symbol)
-                    current_price = ticker['ask'] if direction == 'long' else ticker['bid']
+                    # Monitor trade
+                    in_trade = True
+                    entry_price = current_price
+                    while in_trade:
+                        time.sleep(60)
+                        ticker = exchange.fetch_ticker(symbol)
+                        current_price = ticker['ask'] if direction == 'long' else ticker['bid']
 
-                    # Calculate profit/loss
-                    pnl = (current_price - entry_price) / entry_price if direction == 'long' else (entry_price - current_price) / entry_price
+                        # Calculate profit/loss
+                        pnl = (current_price - entry_price) / entry_price if direction == 'long' else (entry_price - current_price) / entry_price
 
-                    # Exit conditions
-                    if pnl >= take_profit:
-                        exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
-                        if exit_order:
-                            print(f"Exited {direction} trade for {symbol} with profit")
-                        in_trade = False
-                    elif pnl <= -stop_loss:
-                        exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
-                        if exit_order:
-                            print(f"Exited {direction} trade for {symbol} with loss")
-                        in_trade = False
+                        # Exit conditions
+                        if pnl >= take_profit:
+                            exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
+                            if exit_order:
+                                print(f"Exited {direction} trade for {symbol} with profit")
+                            in_trade = False
+                        elif pnl <= -stop_loss:
+                            exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
+                            if exit_order:
+                                print(f"Exited {direction} trade for {symbol} with loss")
+                            in_trade = False
 
     # Sleep before starting the next loop
     time.sleep(60)
