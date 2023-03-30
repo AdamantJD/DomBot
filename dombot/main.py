@@ -39,6 +39,16 @@ def get_indicator_values(data, ema_periods, rsi_period, stoch_periods, bollinger
     bollinger_values = talib.BBANDS(close_prices, timeperiod=bollinger_period)
     return ema_values, rsi_values, stoch_values, bollinger_values
 
+def get_futures_balance():
+    try:
+        balance = exchange.fapiPrivate_get_balance()
+        for entry in balance:
+            if entry['asset'] == 'USDT':
+                return float(entry['balance'])
+    except Exception as e:
+        print(f"Error fetching futures balance: {e}")
+        return None
+
 def enter_trade(symbol, position_size, direction, current_price):
     try:
         if direction == 'long':
@@ -67,6 +77,7 @@ while True:
         # Only trade USDT pairs
         if not symbol.endswith('/USDT'):
             continue
+
         # Get OHLCV data
         data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
         high = np.array([item[2] for item in data])
@@ -87,8 +98,14 @@ while True:
                 signal = True
             
             if signal:
+                # Get current futures balance
+                balance = get_futures_balance()
+                if balance is None:
+                    print("Error fetching balance, skipping trade.")
+                    continue
+
                 # Calculate position size
-                position_size = max_position_size * risk / stop_loss
+                position_size = 0.01 * balance
 
                 # Get current price
                 ticker = exchange.fetch_ticker(symbol)
