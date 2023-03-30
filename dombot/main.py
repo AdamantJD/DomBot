@@ -8,6 +8,7 @@ import logging
 import concurrent.futures
 import threading
 from dotenv import load_dotenv
+import urllib3
 
 # Load API keys from .env file
 load_dotenv()
@@ -15,14 +16,26 @@ API_KEY = os.getenv('API_KEY')
 API_SECRET = os.getenv('API_SECRET')
 API_ENDPOINT = os.getenv('API_ENDPOINT')
 
+import requests
+
+session = requests.Session()
+adapter = requests.adapters.HTTPAdapter(pool_connections=500, pool_maxsize=500)
+session.mount('https://', adapter)
+
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # Set up exchange instance
 exchange = ccxt.binance({
     'apiKey': API_KEY,
     'secret': API_SECRET,
     'enableRateLimit': True,
-})
+    }
+)
 
 exchange.load_markets()
+markets = exchange.markets.keys()
+print(markets)
 
 # Set up trading parameters
 risk = 0.1
@@ -96,14 +109,19 @@ def get_futures_balance():
     for i in range(5):
         try:
             balance = exchange.fapiPrivate_get_balance()
+            print(balance)
             for entry in balance:
                 if entry['asset'] == 'USDT':
                     return float(entry['balance'])
-        except Exception as e:
+        except ccxt.NetworkError as e:
             other_logger.error(f"Error fetching futures balance: {e}")
+            time.sleep(5 * (i + 1))
+        except ccxt.ExchangeError as e:
+            other_logger.error(f"Exchange error fetching futures balance: {e}")
             time.sleep(5 * (i + 1))
     logging.warning("Failed to fetch futures balance after multiple attempts.")
     return None
+
 
 
 def enter_trade(symbol, position_size, direction, current_price):
@@ -172,12 +190,15 @@ def process_symbol(symbol):
             logging.info(f"Attempting to execute trade for {symbol}")  # Log the trading pair
 
             # Get current futures balance
+            balance = None
             for attempt in range(3):
-                balance = get_futures_balance()
-                if balance is not None:
-                    break
-                if attempt < 2:  # Don't sleep after the last attempt
-                    time.sleep(10)
+                try:
+                    balance = get_futures_balance()
+                    if balance is not None:
+                        break
+                except Exception as e:
+                    other_logger.error(f"Error fetching futures balance: {e}")
+                    time.sleep(5 * (attempt + 1))
 
             if balance is None:
                 logging.warning("Skipping trade due to failure to obtain balance.")

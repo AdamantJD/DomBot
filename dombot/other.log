@@ -1,2 +1,4 @@
 2023-03-31 01:22:12,926 ERROR Error fetching futures balance: binance GET https://fapi.binance.com/fapi/v1/balance?timestamp=1680196922920&recvWindow=10000&signature=eac66098e9680f45d37573e813d08080be66ee76622c23b5099a2b7e80121c71
 2023-03-31 01:30:04,156 ERROR Error fetching futures balance: binance GET https://fapi.binance.com/fapi/v1/balance?timestamp=1680197394148&recvWindow=10000&signature=3a93f0dabaa9a93bfa14fc793e59d41dd9f4ddc824638f48416f9b10d3d52a90
+2023-03-31 02:08:08,222 ERROR Error fetching futures balance: binance GET https://fapi.binance.com/fapi/v1/balance?timestamp=1680199678191&recvWindow=10000&signature=cf0b1f11d70efeda487766afa31173c99821bf63ec9e5081890f9427ed1dbff9
+2023-03-31 02:12:43,423 ERROR Error fetching futures balance: binance GET https://fapi.binance.com/fapi/v1/balance?timestamp=1680199953414&recvWindow=10000&signature=692eaa567fd861930e4099bddc2c8e2c637b8c04c8e41880947c377658e17437
