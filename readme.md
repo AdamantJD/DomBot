@@ -26,8 +26,8 @@ To get started with DomBot, follow the steps below:
 
 4. Create a `.env` file in the root directory of your project, and add the following environment variables:
 
-API_KEY=YOUR_BINANCE_API_KEY
-API_SECRET=YOUR_BINANCE_API_SECRET
+`API_KEY=YOUR_BINANCE_API_KEY`
+`API_SECRET=YOUR_BINANCE_API_SECRET`
 
 
 Replace `YOUR_BINANCE_API_KEY` and `YOUR_BINANCE_API_SECRET` with your Binance API key and secret.
