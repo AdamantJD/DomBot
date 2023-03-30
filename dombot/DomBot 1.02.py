@@ -1,13 +1,19 @@
-# Import necessary libraries
 import ccxt
 import talib
 import numpy as np
 import time
+import os
+from dotenv import load_dotenv
+
+# Load API keys from .env file
+load_dotenv()
+API_KEY = os.getenv('API_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # Set up exchange instance
 exchange = ccxt.binance({
-    'apiKey': 'YOUR_API_KEY',
-    'secret': 'YOUR_SECRET_KEY',
+    'apiKey': API_KEY,
+    'secret': SECRET_KEY,
     'enableRateLimit': True,
 })
 
@@ -42,6 +48,23 @@ while True:
         
         # Check for bullish EMA crossover on the 15-minute timeframe
         if ema_values[10][-1] > ema_values[20][-1] and ema_values[10][-2] <= ema_values[20][-2]:
+            # Calculate position size based on risk, leverage, and equity
+            equity = exchange.fetch_balance()['total']['USDT']
+            max_equity_exposure = equity * max_position_size
+            max_position_size_usd = max_equity_exposure / (leverage * close_prices[100][-1])
+            balance = exchange.fetch_balance()['total']['USDT']
+            position_size = min(max_position_size_usd, balance * risk / (leverage * close_prices[100][-1]))
+            
+            # Place limit buy order
+            buy_price = close_prices[100][-1]
+            order = exchange.create_limit_buy_order(symbol, position_size, buy_price)
+            
+            # Set take-profit level and stop-loss level
+            take_profit_price = buy_price * (1 + take_profit)
+            stop_loss_price = buy_price * (1 - stop_loss)
+            
+        # Check for bearish EMA crossover on the 15-minute timeframe
+        elif ema_values[10][-1] < ema_values[20][-1] and ema_values[10][-2] >= ema_values[20][-2]:
             # Calculate position size based on risk, leverage, and equity
             equity = exchange.fetch_balance()['total']['USDT']
             max_equity_exposure = equity * max_position_size
