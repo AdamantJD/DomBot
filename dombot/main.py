@@ -35,6 +35,7 @@ ema_periods = [10, 20]
 rsi_period = 14
 stoch_periods = (14, 3, 3)
 bollinger_period = 20
+trade_timeout = 60  # 1 minute
 
 # Set up logging for market data
 market_data_logger = logging.getLogger('market_data_logger')
@@ -101,7 +102,8 @@ def get_futures_balance():
         except Exception as e:
             other_logger.error(f"Error fetching futures balance: {e}")
             time.sleep(5 * (i + 1))
-    raise RuntimeError("Failed to fetch futures balance after multiple attempts.")
+    logging.warning("Failed to fetch futures balance after multiple attempts.")
+    return None
 
 
 def enter_trade(symbol, position_size, direction, current_price):
@@ -144,7 +146,7 @@ def exit_trade(symbol, position_size, direction):
 
 def process_symbol(symbol):
     # Get OHLCV data
-    data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
+    data = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=lookback_periods[1])
 
     # Log market data
     market_data_logger.debug(f"{symbol} OHLCV data: {data}")
@@ -167,8 +169,16 @@ def process_symbol(symbol):
             signal = True
 
         if signal:
+            logging.info(f"Attempting to execute trade for {symbol}")  # Log the trading pair
+
             # Get current futures balance
-            balance = get_futures_balance()
+            for attempt in range(3):
+                balance = get_futures_balance()
+                if balance is not None:
+                    break
+                if attempt < 2:  # Don't sleep after the last attempt
+                    time.sleep(10)
+
             if balance is None:
                 logging.warning("Skipping trade due to failure to obtain balance.")
                 return
@@ -212,10 +222,13 @@ def process_symbol(symbol):
                         if exit_order:
                             logging.info(f"Exited {direction} trade for {symbol} with loss")
                         in_trade = False
-                    elif time.time() - entry_time > 900:  # trade duration is 15 minutes (900 seconds)
+
+                    # Timeout exit condition
+                    if time.time() - entry_time >= trade_timeout:
                         exit_order = exit_trade(symbol, position_size, direction)
                         if exit_order:
-                            logging.info(f"Exited {direction} trade for {symbol} after 15 minutes")
+                            logging.info(f"Exited {direction} trade for {symbol} due to timeout")
+                        in_trade = False
 
 import concurrent.futures
 
