@@ -8,19 +8,12 @@ import logging
 import concurrent.futures
 import threading
 from dotenv import load_dotenv
-import urllib3
 
 # Load API keys from .env file
 load_dotenv()
 API_KEY = os.getenv('API_KEY')
 API_SECRET = os.getenv('API_SECRET')
 API_ENDPOINT = os.getenv('API_ENDPOINT')
-
-import requests
-
-session = requests.Session()
-adapter = requests.adapters.HTTPAdapter(pool_connections=500, pool_maxsize=500)
-session.mount('https://', adapter)
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
