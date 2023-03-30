@@ -1,0 +1,4 @@
+certifi==2022.6.15
+numpy==1.24.1
+sqlmap==1.7
+websocket-client==1.5.0
