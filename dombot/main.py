@@ -4,11 +4,13 @@ import numpy as np
 import time
 import os
 from dotenv import load_dotenv
+import requests
 
 # Load API keys from .env file
 load_dotenv()
 API_KEY = os.getenv('API_KEY')
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('API_SECRET')
+API_ENDPOINT = os.getenv('API_ENDPOINT')
 
 # Set up exchange instance
 exchange = ccxt.binance({

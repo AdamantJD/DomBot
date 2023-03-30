@@ -54,7 +54,7 @@ export default function Home() {
         <div className="dashboard">
           <div className="section">
             <h2>Wallet Balance</h2>
-            <p>{walletBalance != null ? walletBalance.toFixed(2) : '-'}</p>
+            <p>{walletBalance != null ? `${walletBalance.toFixed(2)}` : '-'}</p>
           </div>
 
           <div className="section">
