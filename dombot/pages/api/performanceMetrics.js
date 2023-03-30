@@ -1,4 +1,5 @@
 import ccxt from 'ccxt';
+import { getPerformanceMetrics } from './dombot/main';
 
 const API_KEY = process.env.API_KEY;
 const SECRET_KEY = process.env.API_SECRET;
@@ -9,12 +10,24 @@ const exchange = new ccxt.binance({
   enableRateLimit: true,
 });
 
-export default async function handler(req, res) {
+exports.handler = async (event, context) => {
   try {
     const metrics = await getPerformanceMetrics(exchange);
-    res.status(200).json(metrics);
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(metrics),
+    };
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch performance metrics.' });
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ error: 'Failed to fetch performance metrics.' }),
+    };
   }
-}
+};
