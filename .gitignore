@@ -42,3 +42,4 @@ yarn-error.log*
 trading_bot.log
 other.log
 market_data.log
+*.log
