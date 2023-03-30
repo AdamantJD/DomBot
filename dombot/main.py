@@ -6,6 +6,7 @@ import os
 import requests
 import logging
 import concurrent.futures
+from datetime import datetime
 import threading
 from dotenv import load_dotenv
 
@@ -30,6 +31,8 @@ exchange.load_markets()
 markets = exchange.markets.keys()
 
 # Set up trading parameters
+timeframe = '5m'
+num_candles = 30
 risk = 0.1
 leverage = 10
 lookback_periods = [100, 200]
@@ -187,13 +190,48 @@ def process_symbol(symbol):
         direction = 'short'
 
     if direction:
+        # Get current price
+        ticker = exchange.fetch_ticker(symbol)
+        current_price = ticker['ask'] if direction == 'long' else ticker['bid']
+        
         signal = False  # Initialize signal variable
         if rsi_values[-1] < 45 and direction == 'long':
             signal = True
         elif rsi_values[-1] > 55 and direction == 'short':
             signal = True
 
+        # Calculate the 0.382 Fibonacci level
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=num_candles)
+        high_price = np.max([candle[2] for candle in ohlcv])  # Get the highest price
+        low_price = np.min([candle[3] for candle in ohlcv])   # Get the lowest price
+        fib_382 = low_price + (high_price - low_price) * 0.382 # calculate the 0.382 fibonacci level
+
         if signal:
+            if direction == 'long':
+                order_side = 'buy'
+                limit_price = fib_382
+            else:
+                order_side = 'sell'
+                limit_price = current_price * 0.99
+
+            limit_price = exchange.price_to_precision(symbol, limit_price)
+
+            # Calculate position size
+            symbol_info = exchange.markets[symbol]
+            minimum_trade_value = symbol_info['limits']['cost']['min']
+            minimum_position_size = minimum_trade_value / current_price
+            position_size = max(minimum_position_size, 0.01 * balance)
+            position_size = calculate_position_size(balance, current_price, risk)
+            position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
+
+            print(f"Placing {order_side} limit order for {symbol} with size {position_size} at price {limit_price}")
+            try:
+                order = exchange.create_limit_order(symbol, order_side, position_size, limit_price)
+                print(f"{datetime.now()} {symbol} {order_side} limit order placed at {limit_price}, size: {position_size}")
+            except Exception as e:
+                print(f"{datetime.now()} {symbol} Error placing {order_side} limit order: {e}")
+                logging.error(f"Error placing limit order for {symbol}: {e}")
+
             other_logger.debug(f"{symbol} signal: {signal}")
             logging.info(f"Attempting to execute trade for {symbol}")  # Log the trading pair
 
@@ -213,14 +251,6 @@ def process_symbol(symbol):
             # Get current price
             ticker = exchange.fetch_ticker(symbol)
             current_price = ticker['ask'] if direction == 'long' else ticker['bid']
-
-            # Calculate position size
-            symbol_info = exchange.markets[symbol]
-            minimum_trade_value = symbol_info['limits']['cost']['min']
-            minimum_position_size = minimum_trade_value / current_price
-            position_size = max(minimum_position_size, 0.01 * balance)
-            position_size = calculate_position_size(balance, current_price, risk)
-            position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
 
             # Enter trade
             order = enter_trade(symbol, position_size, direction, current_price)
