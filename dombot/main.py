@@ -5,6 +5,8 @@ import time
 import os
 import requests
 import logging
+import concurrent.futures
+import threading
 from dotenv import load_dotenv
 
 # Load API keys from .env file
@@ -97,7 +99,7 @@ def get_futures_balance():
                 if entry['asset'] == 'USDT':
                     return float(entry['balance'])
         except Exception as e:
-            logging.error(f"Error fetching futures balance: {e}")
+            other_logger.error(f"Error fetching futures balance: {e}")
             time.sleep(5 * (i + 1))
     raise RuntimeError("Failed to fetch futures balance after multiple attempts.")
 
@@ -140,97 +142,91 @@ def exit_trade(symbol, position_size, direction):
     logging.error(f"Failed to exit {direction} trade for {symbol} after multiple attempts.")
     return None
 
+def process_symbol(symbol):
+    # Get OHLCV data
+    data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
 
+    # Log market data
+    market_data_logger.debug(f"{symbol} OHLCV data: {data}")
 
-# Main trading loop
-last_trade_time = time.time() - 60 # initialize last trade time
+    high = np.array([item[2] for item in data])
+    low = np.array([item[3] for item in data])
+    ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
+
+    direction = None
+    if ema_values[10][-1] > ema_values[20][-1] and ema_values[10][-2] <= ema_values[20][-2]:
+        direction = 'long'
+    elif ema_values[10][-1] < ema_values[20][-1] and ema_values[10][-2] >= ema_values[20][-2]:
+        direction = 'short'
+
+    if direction:
+        signal = False  # Initialize signal variable
+        if rsi_values[-1] < 30 and direction == 'long':
+            signal = True
+        elif rsi_values[-1] > 70 and direction == 'short':
+            signal = True
+
+        if signal:
+            # Get current futures balance
+            balance = get_futures_balance()
+            if balance is None:
+                logging.warning("Skipping trade due to failure to obtain balance.")
+                return
+
+            # Get current price
+            ticker = exchange.fetch_ticker(symbol)
+            current_price = ticker['ask'] if direction == 'long' else ticker['bid']
+
+            # Calculate position size
+            symbol_info = exchange.markets[symbol]
+            minimum_trade_value = symbol_info['limits']['cost']['min']
+            minimum_position_size = minimum_trade_value / current_price
+            position_size = max(minimum_position_size, 0.01 * balance)
+            position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
+
+            # Enter trade
+            order = enter_trade(symbol, position_size, direction, current_price)
+            if order:
+                logging.info(f"Entered {direction} trade for {symbol} with position size {position_size}")
+
+                # Monitor trade
+                in_trade = True
+                entry_time = time.time()
+                entry_price = current_price
+                while in_trade:
+                    time.sleep(5)
+                    ticker = exchange.fetch_ticker(symbol)
+                    current_price = ticker['ask'] if direction == 'long' else ticker['bid']
+
+                    # Calculate profit/loss
+                    pnl = (current_price - entry_price) / entry_price if direction == 'long' else (entry_price - current_price) / entry_price
+
+                    # Exit conditions
+                    if pnl >= take_profit:
+                        exit_order = exit_trade(symbol, position_size, direction)
+                        if exit_order:
+                            logging.info(f"Exited {direction} trade for {symbol} with profit")
+                        in_trade = False
+                    elif pnl <= -stop_loss:
+                        exit_order = exit_trade(symbol, position_size, direction)
+                        if exit_order:
+                            logging.info(f"Exited {direction} trade for {symbol} with loss")
+                        in_trade = False
+                    elif time.time() - entry_time > 900:  # trade duration is 15 minutes (900 seconds)
+                        exit_order = exit_trade(symbol, position_size, direction)
+                        if exit_order:
+                            logging.info(f"Exited {direction} trade for {symbol} after 15 minutes")
+
+import concurrent.futures
+
+def process_symbols():
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        symbols_to_process = [symbol for symbol in exchange.markets if symbol.endswith('/USDT')]
+        executor.map(process_symbol, symbols_to_process)
+
+last_trade_time = time.time() - 60  # Initialize last trade time
 while True:
-    for symbol in exchange.markets:
-        # Only trade USDT pairs
-        if not symbol.endswith('/USDT'):
-            continue
+    process_symbols()
 
-        # Get OHLCV data
-        data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
-
-        # Log market data
-        market_data_logger.debug(f"{symbol} OHLCV data: {data}")
-
-        high = np.array([item[2] for item in data])
-        low = np.array([item[3] for item in data])
-        ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
-        
-        direction = None
-        if ema_values[10][-1] > ema_values[20][-1] and ema_values[10][-2] <= ema_values[20][-2]:
-            direction = 'long'
-        elif ema_values[10][-1] < ema_values[20][-1] and ema_values[10][-2] >= ema_values[20][-2]:
-            direction = 'short'
-        
-        if direction:
-            signal = False # Initialize signal variable
-            if rsi_values[-1] < 30 and direction == 'long':
-                signal = True
-            elif rsi_values[-1] > 70 and direction == 'short':
-                signal = True
-            
-            if signal:
-                # Get current futures balance
-                balance = get_futures_balance()
-                if balance is None:
-                    logging.warning("Skipping trade due to failure to obtain balance.")
-                    continue
-                
-                # Calculate position size
-                symbol_info = exchange.markets[symbol]
-                minimum_trade_value = symbol_info['limits']['cost']['min']
-                minimum_position_size = minimum_trade_value / current_price
-                position_size = max(minimum_position_size, 0.01 * balance)
-                position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
-
-                # Get current price
-                ticker = exchange.fetch_ticker(symbol)
-                current_price = ticker['ask'] if direction == 'long' else ticker['bid']
-
-                # Enter trade
-                order = enter_trade(symbol, position_size, direction, current_price)
-                if order:
-                    logging.info(f"Entered {direction} trade for {symbol} with position size {position_size}")
-
-                    # Monitor trade
-                    in_trade = True
-                    entry_time = time.time()
-                    entry_price = current_price
-                    while in_trade:
-                        time.sleep(5)
-                        ticker = exchange.fetch_ticker(symbol)
-                        current_price = ticker['ask'] if direction == 'long' else ticker['bid']
-
-                        # Calculate profit/loss
-                        pnl = (current_price - entry_price) / entry_price if direction == 'long' else (entry_price - current_price) / entry_price
-
-                        # Exit conditions
-                        if pnl >= take_profit:
-                            exit_order = exit_trade(symbol, position_size, direction)
-                            if exit_order:
-                                logging.info(f"Exited {direction} trade for {symbol} with profit")
-                            in_trade = False
-                        elif pnl <= -stop_loss:
-                            exit_order = exit_trade(symbol, position_size, direction)
-                            if exit_order:
-                                logging.info(f"Exited {direction} trade for {symbol} with loss")
-                            in_trade = False
-                        elif time.time() - entry_time > 900: # trade duration is 15 minutes (900 seconds)
-                            exit_order = exit_trade(symbol, position_size, direction)
-                            if exit_order:
-                                logging.info(f"Excited {direction} trade for {symbol} after 15 minutes")
-                            in_trade = False
-                    # Update last trade time
-                    last_trade_time = time.time()
-
-        # Calculate remainign time before next trade
-        next_trade_time = last_trade_time + 60
-        remaining_time = max(0, next_trade_time - time.time())
-
-        # Sleep before starting the next loop
-        time.sleep(60)
-    
+    # Sleep for 60 seconds before starting the next loop
+    time.sleep(60)
