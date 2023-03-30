@@ -3,8 +3,9 @@ import talib
 import numpy as np
 import time
 import os
-from dotenv import load_dotenv
 import requests
+import logging
+from dotenv import load_dotenv
 
 # Load API keys from .env file
 load_dotenv()
@@ -33,6 +34,10 @@ rsi_period = 14
 stoch_periods = (14, 3, 3)
 bollinger_period = 20
 
+# Set up logging
+logging.basicConfig(filename='trading_bot.log', level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s %(message)s')
+
 def get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period):
     close_prices = np.array([item[4] for item in data])
     ema_values = {period: talib.EMA(close_prices, timeperiod=period) for period in ema_periods}
@@ -42,40 +47,49 @@ def get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods
     return ema_values, rsi_values, stoch_values, bollinger_values
 
 def get_futures_balance():
-    try:
-        balance = exchange.fapiPrivate_get_balance()
-        for entry in balance:
-            if entry['asset'] == 'USDT':
-                return float(entry['balance'])
-    except Exception as e:
-        print(f"Error fetching futures balance: {e}")
-        return None
+    for i in range(5):
+        try:
+            balance = exchange.fapiPrivate_get_balance()
+            for entry in balance:
+                if entry['asset'] == 'USDT':
+                    return float(entry['balance'])
+        except Exception as e:
+            logging.error(f"Error fetching futures balance: {e}")
+            time.sleep(5 * (i + 1))
+    logging.error("Failed to fetch futures balance after multiple attempts.")
+    return None
 
 def enter_trade(symbol, position_size, direction, current_price):
-    try:
-        # Round position size to nearest valid size
-        position_size = exchange.amount_to_precision(symbol, position_size)
-        
-        if direction == 'long':
-            order = exchange.create_market_buy_order(symbol, position_size)
-        elif direction == 'short':
-            order = exchange.create_market_sell_order(symbol, position_size)
-        return order
-    except Exception as e:
-        print(f"Error entering {direction} trade for {symbol}: {e}")
-        return None
+    for i in range(5):
+        try:
+            # Round position size to nearest valid size
+            position_size = exchange.amount_to_precision(symbol, position_size)
+            
+            if direction == 'long':
+                order = exchange.create_market_buy_order(symbol, position_size)
+            elif direction == 'short':
+                order = exchange.create_market_sell_order(symbol, position_size)
+            return order
+        except Exception as e:
+            logging.error(f"Error entering {direction} trade for {symbol}: {e}")
+            time.sleep(5 * (i + 1))
+    logging.error(f"Failed to enter {direction} trade for {symbol} after multiple attempts.")
+    return None
 
 
 def exit_trade(symbol, position_size, direction):
-    try:
-        if direction == 'long':
-            order = exchange.create_market_sell_order(symbol, position_size)
-        elif direction == 'short':
-            order = exchange.create_market_buy_order(symbol, position_size)
-        return order
-    except Exception as e:
-        print(f"Error exiting trade for {symbol}: {e}")
-        return None
+    for i in range(5):
+        try:
+            if direction == 'long':
+                order = exchange.create_market_sell_order(symbol, position_size)
+            elif direction == 'short':
+                order = exchange.create_market_buy_order(symbol, position_size)
+            return order
+        except Exception as e:
+            logging.error(f"Error exiting trade for {symbol}: {e}")
+            time.sleep(5 * (i + 1))
+    logging.error(f"Failed to exit {direction} trade for {symbol} after multiple attempts.")
+    return None
 
 # Main trading loop
 while True:
@@ -85,7 +99,7 @@ while True:
             continue
 
         # Get OHLCV data
-        data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1])
+        data = exchange.fetch_ohlcv(symbol, timeframe='15m', limit=lookback_periods[1], verbose=False)
         high = np.array([item[2] for item in data])
         low = np.array([item[3] for item in data])
         ema_values, rsi_values, stoch_values, bollinger_values = get_indicator_values(data, high, low, ema_periods, rsi_period, stoch_periods, bollinger_period)
@@ -107,7 +121,7 @@ while True:
                 # Get current futures balance
                 balance = get_futures_balance()
                 if balance is None:
-                    print("Error fetching balance, skipping trade.")
+                    logging.warning("Skipping trade due to failure to obtain balance.")
                     continue
 
                 # Calculate position size
@@ -120,7 +134,7 @@ while True:
                 # Enter trade
                 order = enter_trade(symbol, position_size, direction, current_price)
                 if order:
-                    print(f"Entered {direction} trade for {symbol} with position size {position_size}")
+                    logging.info(f"Entered {direction} trade for {symbol} with position size {position_size}")
 
                     # Monitor trade
                     in_trade = True
@@ -135,16 +149,16 @@ while True:
 
                         # Exit conditions
                         if pnl >= take_profit:
-                            exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
+                            exit_order = exit_trade(symbol, position_size, direction)
                             if exit_order:
-                                print(f"Exited {direction} trade for {symbol} with profit")
+                                logging.info(f"Exited {direction} trade for {symbol} with profit")
                             in_trade = False
                         elif pnl <= -stop_loss:
-                            exit_order = exit_trade(symbol, position_size, direction)  # Add direction as an argument
+                            exit_order = exit_trade(symbol, position_size, direction)
                             if exit_order:
-                                print(f"Exited {direction} trade for {symbol} with loss")
+                                logging.info(f"Exited {direction} trade for {symbol} with loss")
                             in_trade = False
 
     # Sleep before starting the next loop
     time.sleep(60)
-
+   
