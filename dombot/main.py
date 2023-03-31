@@ -37,12 +37,12 @@ lookback_periods = [100, 200]
 take_profit = 0.441
 stop_loss = 1
 max_position_size = 0.05
+position_size = 100
 # ema_periods = [10, 20]
 ema_periods = [5, 10]
 rsi_period = 14
 stoch_periods = (14, 3, 3)
 bollinger_period = 20
-trade_timeout = 60  # 1 minute
 
 # Set up logging for market data
 market_data_logger = logging.getLogger('market_data_logger')
@@ -123,11 +123,8 @@ def get_futures_symbols():
     exchange_info = exchange.fapiPublic_get_exchangeinfo()
     for symbol_info in exchange_info['symbols']:
         futures_symbols.append(symbol_info['symbol'])
+    print(futures_symbols)
     return futures_symbols
-
-def calculate_position_size(balance, current_price, risk):
-    position_size = balance * risk / current_price
-    return min(position_size, max_position_size * balance)
 
 def process_symbol(symbol):
     # Get OHLCV data
@@ -171,14 +168,6 @@ def process_symbol(symbol):
 
             limit_price = fib_382
             limit_price = exchange.price_to_precision(symbol, limit_price)
-
-            # Calculate position size
-            symbol_info = exchange.markets[symbol]
-            minimum_trade_value = symbol_info['limits']['cost']['min']
-            minimum_position_size = minimum_trade_value / current_price
-            position_size = max(minimum_position_size, 0.01 * balance)
-            position_size = calculate_position_size(balance, current_price, risk)
-            position_size = exchange.amount_to_precision(symbol, position_size, 'CEILING')
 
             print(f"Placing {order_side} limit order for {symbol} with size {position_size} at price {limit_price}")
             try:
