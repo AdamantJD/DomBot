@@ -125,47 +125,6 @@ def get_futures_symbols():
         futures_symbols.append(symbol_info['symbol'])
     return futures_symbols
 
-
-def enter_trade(symbol, position_size, direction, current_price):
-    for i in range(5):
-        try:
-            # Round position size to nearest valid size
-            position_size = exchange.amount_to_precision(symbol, position_size)
-            
-            if direction == 'long':
-                order = exchange.create_market_buy_order(symbol, position_size)
-            elif direction == 'short':
-                order = exchange.create_market_sell_order(symbol, position_size)
-            other_logger.debug(f"Market order response for {symbol}: {order}")
-            logging.info(f"Placed {direction} order for {symbol} with position size {position_size} and current price {current_price}")
-            return order
-        except Exception as e:
-            logging.error(f"Error entering {direction} trade for {symbol}: {e}")
-            time.sleep(5 * (i + 1))
-    logging.error(f"Failed to enter {direction} trade for {symbol} after multiple attempts.")
-    return None
-    
-def exit_trade(symbol, position_size, direction):
-    for i in range(5):
-        try:
-            if direction == 'long':
-                order = exchange.create_market_sell_order(symbol, position_size)
-            elif direction == 'short':
-                order = exchange.create_market_buy_order(symbol, position_size)
-            other_logger.debug(f"Exit order response for {symbol}: {order}")
-            
-            # Log trade exit
-            if order:
-                logging.info(f"Exited {direction} trade for {symbol} with position size {position_size}")
-            
-            return order
-        except Exception as e:
-            logging.error(f"Error exiting {direction} trade for {symbol}: {e}")
-            time.sleep(5 * (i + 1))
-    
-    logging.error(f"Failed to exit {direction} trade for {symbol} after multiple attempts.")
-    return None
-
 def calculate_position_size(balance, current_price, risk):
     position_size = balance * risk / current_price
     return min(position_size, max_position_size * balance)
@@ -249,42 +208,6 @@ def process_symbol(symbol):
             # Get current price
             ticker = exchange.fetch_ticker(symbol)
             current_price = ticker['ask'] if direction == 'long' else ticker['bid']
-
-            # Enter trade
-            order = enter_trade(symbol, position_size, direction, current_price)
-            if order:
-                logging.info(f"Entered {direction} trade for {symbol} with position size {position_size}")
-
-                # Monitor trade
-                in_trade = True
-                entry_time = time.time()
-                entry_price = current_price
-                while in_trade:
-                    time.sleep(5)
-                    ticker = exchange.fetch_ticker(symbol)
-                    current_price = ticker['ask'] if direction == 'long' else ticker['bid']
-
-                    # Calculate profit/loss
-                    pnl = (current_price - entry_price) / entry_price if direction == 'long' else (entry_price - current_price) / entry_price
-
-                    # Exit conditions
-                    if pnl >= take_profit:
-                        exit_order = exit_trade(symbol, position_size, direction)
-                        if exit_order:
-                            logging.info(f"Exited {direction} trade for {symbol} with profit")
-                        in_trade = False
-                    elif pnl <= -stop_loss:
-                        exit_order = exit_trade(symbol, position_size, direction)
-                        if exit_order:
-                            logging.info(f"Exited {direction} trade for {symbol} with loss")
-                        in_trade = False
-
-                    # Timeout exit condition
-                    if time.time() - entry_time >= trade_timeout:
-                        exit_order = exit_trade(symbol, position_size, direction)
-                        if exit_order:
-                            logging.info(f"Exited {direction} trade for {symbol} due to timeout")
-                        in_trade = False
 
 import concurrent.futures
 
