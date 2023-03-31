@@ -25,6 +25,7 @@ exchange = ccxt.binance({
     }
 )
 
+
 exchange.load_markets()
 markets = exchange.markets.keys()
 
@@ -171,7 +172,8 @@ def process_symbol(symbol):
 
             print(f"Placing {order_side} limit order for {symbol} with size {position_size} at price {limit_price}")
             try:
-                order = exchange.create_limit_order(symbol, order_side, position_size, limit_price)
+                # order = exchange.create_limit_order(symbol, order_side, position_size, limit_price)
+                order = exchange.create_limit_order(symbol, order_side, 100, 1)
                 print(f"{datetime.now()} {symbol} {order_side} limit order placed at {limit_price}, size: {position_size}")
             except Exception as e:
                 print(f"{datetime.now()} {symbol} Error placing {order_side} limit order: {e}")
