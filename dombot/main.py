@@ -3,11 +3,9 @@ import talib
 import numpy as np
 import time
 import os
-import requests
 import logging
 import concurrent.futures
 from datetime import datetime
-import threading
 from dotenv import load_dotenv
 
 # Load API keys from .env file
@@ -31,10 +29,10 @@ exchange.load_markets()
 markets = exchange.markets.keys()
 
 # Set up trading parameters
-timeframe = '5m'
+timeframe = '1m'
 num_candles = 30
 risk = 0.1
-leverage = 10
+leverage = 3
 lookback_periods = [100, 200]
 take_profit = 0.441
 stop_loss = 1
@@ -174,7 +172,7 @@ def calculate_position_size(balance, current_price, risk):
 
 def process_symbol(symbol):
     # Get OHLCV data
-    data = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=lookback_periods[1])
+    data = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=num_candles)
 
     # Log market data
     market_data_logger.debug(f"{symbol} OHLCV data: {data}")
@@ -200,20 +198,19 @@ def process_symbol(symbol):
         elif rsi_values[-1] > 55 and direction == 'short':
             signal = True
 
-        # Calculate the 0.382 Fibonacci level
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=num_candles)
-        high_price = np.max([candle[2] for candle in ohlcv])  # Get the highest price
-        low_price = np.min([candle[3] for candle in ohlcv])   # Get the lowest price
-        fib_382 = low_price + (high_price - low_price) * 0.382 # calculate the 0.382 fibonacci level
-
         if signal:
+            # Calculate the 0.382 Fibonacci level
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=num_candles)
+            high_price = np.max([candle[2] for candle in ohlcv])  # Get the highest price
+            low_price = np.min([candle[3] for candle in ohlcv])   # Get the lowest price
+            fib_382 = low_price + (high_price - low_price) * 0.382  # calculate the 0.382 fibonacci level
+
             if direction == 'long':
                 order_side = 'buy'
-                limit_price = fib_382
             else:
                 order_side = 'sell'
-                limit_price = current_price * 0.99
 
+            limit_price = fib_382
             limit_price = exchange.price_to_precision(symbol, limit_price)
 
             # Calculate position size
@@ -233,7 +230,8 @@ def process_symbol(symbol):
                 logging.error(f"Error placing limit order for {symbol}: {e}")
 
             other_logger.debug(f"{symbol} signal: {signal}")
-            logging.info(f"Attempting to execute trade for {symbol}")  # Log the trading pair
+            logging.info(f"Attempting to execute trade for {symbol} at price {limit_price} with position size {position_size}")  # Log the trading pair
+            time.sleep(timeframe_seconds)
 
             # Get current futures balance
             balance = None
@@ -299,9 +297,23 @@ def process_symbols():
         symbols_to_process = [symbol for symbol in exchange.markets if symbol.endswith('/USDT') and symbol.replace("/", "") in valid_futures_symbols]
         executor.map(process_symbol, symbols_to_process)
 
-last_trade_time = time.time() - 60  # Initialize last trade time
+timeframe_seconds = int(timeframe[:-1]) * 60 if timeframe.endswith('m') else int(timeframe[:-1]) * 60 * 60  # Initialize last trade time
 while True:
+    # Get current futures balance
+    balance = None
+    for attempt in range(3):
+        balance = get_futures_balance()
+        if balance is not None:
+            break
+        else:
+            time.sleep(5 * (attempt + 1))
+
+    if balance is None:
+        logging.warning("Skipping trade due to failure to obtain balance.")
+        time.sleep(timeframe_seconds)
+        continue
+
     process_symbols()
 
     # Sleep for 60 seconds before starting the next loop
-    time.sleep(60)
+    time.sleep(timeframe_seconds)
